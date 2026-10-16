@@ -1,5 +1,6 @@
 package com.saishyam.ledger.web;
 
+import com.saishyam.ledger.domain.IdempotencyConflictException;
 import com.saishyam.ledger.domain.InsufficientFundsException;
 import com.saishyam.ledger.domain.InvalidTransferException;
 import com.saishyam.ledger.domain.NotFoundException;
@@ -24,5 +25,10 @@ public class ErrorHandler {
     @ExceptionHandler(InvalidTransferException.class)
     public ProblemDetail invalid(InvalidTransferException ex) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getMessage());
+    }
+
+    @ExceptionHandler(IdempotencyConflictException.class)
+    public ProblemDetail idempotencyConflict(IdempotencyConflictException ex) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.UNPROCESSABLE_ENTITY, ex.getMessage());
     }
 }

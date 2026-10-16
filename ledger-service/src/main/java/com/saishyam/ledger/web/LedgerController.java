@@ -3,10 +3,13 @@ package com.saishyam.ledger.web;
 import com.saishyam.ledger.domain.Account;
 import com.saishyam.ledger.domain.LedgerEntry;
 import com.saishyam.ledger.domain.Transfer;
+import com.saishyam.ledger.service.IdempotentPayments;
 import com.saishyam.ledger.service.LedgerService;
+import com.saishyam.ledger.service.TransferResult;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
@@ -38,8 +41,12 @@ public class LedgerController {
     }
 
     private final LedgerService ledger;
+    private final IdempotentPayments payments;
 
-    public LedgerController(LedgerService ledger) { this.ledger = ledger; }
+    public LedgerController(LedgerService ledger, IdempotentPayments payments) {
+        this.ledger = ledger;
+        this.payments = payments;
+    }
 
     @PostMapping("/accounts")
     @ResponseStatus(HttpStatus.CREATED)
@@ -53,19 +60,27 @@ public class LedgerController {
     }
 
     @PostMapping("/accounts/{id}/deposit")
-    @ResponseStatus(HttpStatus.CREATED)
-    public TransferResponse deposit(@PathVariable long id, @Valid @RequestBody AmountRequest req) {
-        return TransferResponse.of(ledger.deposit(id, req.amountMinor()));
+    public ResponseEntity<TransferResponse> deposit(@RequestHeader("Idempotency-Key") String key,
+                                                    @PathVariable long id,
+                                                    @Valid @RequestBody AmountRequest req) {
+        return toResponse(payments.deposit(key, id, req.amountMinor()));
     }
 
     @PostMapping("/transfers")
-    @ResponseStatus(HttpStatus.CREATED)
-    public TransferResponse transfer(@Valid @RequestBody TransferRequest req) {
-        return TransferResponse.of(ledger.transfer(req.fromAccountId(), req.toAccountId(), req.amountMinor()));
+    public ResponseEntity<TransferResponse> transfer(@RequestHeader("Idempotency-Key") String key,
+                                                     @Valid @RequestBody TransferRequest req) {
+        return toResponse(payments.transfer(key, req.fromAccountId(), req.toAccountId(), req.amountMinor()));
     }
 
     @GetMapping("/accounts/{id}/entries")
     public List<EntryResponse> entries(@PathVariable long id) {
         return ledger.entriesFor(id).stream().map(EntryResponse::of).toList();
+    }
+
+    // 201 = new transfer created; 200 + header = same request replayed, no money moved
+    private ResponseEntity<TransferResponse> toResponse(TransferResult r) {
+        return ResponseEntity.status(r.replayed() ? HttpStatus.OK : HttpStatus.CREATED)
+                .header("Idempotent-Replayed", String.valueOf(r.replayed()))
+                .body(TransferResponse.of(r.transfer()));
     }
 }
