@@ -1,3 +1,6 @@
 target/
 *.iml
 .idea/
+.venv/
+__pycache__/
+bench/concurrency/results/smoke.csv
